@@ -3,8 +3,10 @@
  * To change this template file, choose Tools | Templates
  * and open the template in the editor.
  */
-package clib.io;
+package cnmstudio;
 
+import clib.io.DualLock;
+import cnmstudio.Page;
 import clib.layer.ImageLayer;
 import clib.layer.PageLayer;
 import clib.layer.ShapeLayer;
