@@ -7,15 +7,27 @@
 package cnmstudio;
 
 import clib.io.DualLock;
-import cnmstudio.Page;
+import clib.io.drm.DRMLess;
+import clib.io.drm.IDRM;
+import clib.io.drm.PluginServiceFactory;
+import clib.io.drm.StandardPluginService;
 import clib.layer.ImageLayer;
 import clib.layer.PageLayer;
 import clib.layer.ShapeLayer;
 import clib.layer.TextLayer;
+import java.io.BufferedInputStream;
+import java.io.BufferedOutputStream;
 import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
 import javax.xml.transform.OutputKeys;
 import javax.xml.transform.Result;
 import javax.xml.transform.Source;
@@ -40,6 +52,10 @@ import org.xml.sax.helpers.AttributesImpl;
  * @author Yves
  */
 public class Writer {
+    
+    //==========================================================================
+    // XML ---------------------------------------------------------------------
+    //==========================================================================
     
     /*   Structure à écrire :
      * <pages mode="(free or enc)">
@@ -66,10 +82,8 @@ public class Writer {
     // Storage of pages
     Page page = new Page();
     
-    DualLock duallock = new DualLock();
-
     public Writer(){
-
+        loadPlugins();
     }
     
     public class PagesSource extends org.xml.sax.InputSource{
@@ -180,6 +194,7 @@ public class Writer {
             // Main element - beginning
             chandler.startDocument();
             attributes.addAttribute("", "", "mode", "mode", page.getMode()==Page.Mode.Free ? "free" : "enc");
+            attributes.addAttribute("", "", "drm", "drm", drmToUse.getName());
             chandler.startElement("", "pages", "pages", attributes);
             attributes.clear();
 
@@ -201,10 +216,7 @@ public class Writer {
                 attributes.addAttribute("", "", "x", "x", Integer.toString(imagelayer.getXOffset()));
                 attributes.addAttribute("", "", "y", "y", Integer.toString(imagelayer.getYOffset()));
                 chandler.startElement("", "image", "image", attributes);
-                char[] image = 
-                        page.getMode()==Page.Mode.Free ?
-                        duallock.encodeImage(imagelayer.getImage()).toCharArray() :
-                        duallock.encodeSecureImage(imagelayer.getImage()).toCharArray();
+                char[] image = drmToUse.encryptImage(imagelayer.getImage()).toCharArray();
                 chandler.characters(image,0,image.length);
                 chandler.endElement("", "image", "image");
                 attributes.clear();
@@ -218,10 +230,7 @@ public class Writer {
                     attributes.addAttribute("", "", "name", "name", sl.getName());
                     attributes.addAttribute("", "", "color", "color", sl.getStringColor());
                     chandler.startElement("", "shape", "shape", attributes);
-                    char[] shape = 
-                            page.getMode()==Page.Mode.Free ?
-                            sl.getStringCommands().toCharArray() :
-                            duallock.encodeSecureString(sl.getStringCommands()).toCharArray();
+                    char[] shape = drmToUse.encryptData(sl.getStringCommands()).toCharArray();
                     chandler.characters(shape,0,shape.length);
                     chandler.endElement("", "shape", "shape");
                     attributes.clear();
@@ -236,10 +245,7 @@ public class Writer {
                 
                 for(TextLayer tl : page.getTextsFrom(pl)){
                     
-                    // text element - beginning
-                    attributes.addAttribute("", "", "fontfamily", "fontfamily", tl.getTextFont().getFamily());
-                    attributes.addAttribute("", "", "style", "style", tl.getStringFontStyle());
-                    attributes.addAttribute("", "", "size", "size", Integer.toString(tl.getTextFont().getSize()));
+                    // text element - beginning                    
                     attributes.addAttribute("", "", "xo", "xo", Integer.toString(tl.getXOffset()));
                     attributes.addAttribute("", "", "yo", "yo", Integer.toString(tl.getYOffset()));
                     attributes.addAttribute("", "", "xm", "xm", Integer.toString(tl.getXMax()));
@@ -256,23 +262,22 @@ public class Writer {
                         attributes.clear();
                         
                         // content block
+                        attributes.addAttribute("", "", "fontfamily", "fontfamily", tl.getDisplay(iso).getFont().getFamily());
+                        attributes.addAttribute("", "", "style", "style", tl.getStringFontStyle(iso));
+                        attributes.addAttribute("", "", "size", "size", Integer.toString(tl.getDisplay(iso).getFont().getSize()));
+                        attributes.addAttribute("", "", "color", "color", tl.getStringColor(iso));
                         chandler.startElement("", "content", "content", attributes);
-                        char[] content = 
-                                page.getMode()==Page.Mode.Free ?
-                                tl.getText(iso).toCharArray() :
-                                duallock.encodeSecureString(tl.getText(iso)).toCharArray();
+                        char[] content = drmToUse.encryptData(tl.getText(iso)).toCharArray();
                         chandler.characters(content,0,content.length);
                         chandler.endElement("", "content", "content");
+                        attributes.clear();
                         
                         if(tl.getAudios().containsKey(iso)){
                             
                             // audio block
                             attributes.addAttribute("", "", "name", "name", tl.getAudio(iso).getName());
                             chandler.startElement("", "audio", "audio", attributes);                            
-                            char[] audio = 
-                                    page.getMode()==Page.Mode.Free ?
-                                    tl.getAudio(iso).getMP3Path().toCharArray() :
-                                    duallock.encodeSecureString(tl.getAudio(iso).getMP3Path()).toCharArray();
+                            char[] audio = drmToUse.encryptData(tl.getAudio(iso).getAACName()).toCharArray();
                             chandler.characters(audio,0,audio.length);
                             chandler.endElement("", "audio", "audio");
                             attributes.clear();
@@ -336,7 +341,114 @@ public class Writer {
         this.page = page;
     }
     
-    public void setDualLock(DualLock duallock){
-        this.duallock = duallock;
+    //==========================================================================
+    // CNM - ZIPPED ------------------------------------------------------------
+    //==========================================================================
+    
+    public void createCNM(String path) throws TransformerConfigurationException,
+            TransformerException, FileNotFoundException, IOException{
+        
+        // Prépare le fichier d'archive
+        File archive = new File(path);
+        
+        // Prépare le fichier temporaire
+        File xmlfile = new File(archive.getParentFile(), "temp.xml");
+        
+        // Crée la source XML dans le fichier temporaire
+        org.xml.sax.XMLReader pread = new PagesReader();
+        InputSource psource = new PagesSource(page);
+        Source source = new SAXSource(pread, psource);
+        
+        Result resultat = new StreamResult(xmlfile);
+        
+        TransformerFactory fabrique = TransformerFactory.newInstance();
+        Transformer transformer;
+        transformer = fabrique.newTransformer();
+        transformer.setOutputProperty(OutputKeys.INDENT, "yes");
+        transformer.setOutputProperty(OutputKeys.ENCODING, "UTF-8");
+        transformer.transform(source, resultat);
+        
+        // Compresse les fichiers dans l'archive
+        FileInputStream fis; BufferedInputStream origin; ZipEntry entry;
+        final int BUFFER = 2048;
+        byte data[] = new byte[BUFFER];
+        
+        FileOutputStream dest = new FileOutputStream(archive);
+        try (ZipOutputStream out = new ZipOutputStream(new BufferedOutputStream(dest))) {
+            
+            fis = new FileInputStream(xmlfile);
+            origin = new BufferedInputStream(fis, BUFFER);                      //Ouvre un flux pour le fichier à compresser
+            entry = new ZipEntry(xmlfile.getName());                            //Crée l'entrée
+            out.putNextEntry(entry);                                            //Déclare l'entrée à la sortie zip
+            int count;
+            while((count = origin.read(data, 0, BUFFER)) != -1) {
+                out.write(data, 0, count);                                      //Ecrit l'entrée dans la sortie zip
+            }
+            origin.close();                                                     //Ferme le flux de compression du fichier
+            
+            for(PageLayer pl : page.getPages()){
+                for(TextLayer tl : page.getTextsFrom(pl)){
+                    for(TextLayer.ISO_3166 iso : tl.getTextCountries()){
+                        if(tl.getAudios().containsKey(iso)){                            
+                            fis = new FileInputStream(tl.getAudio(iso).getAACPath());
+                            origin = new BufferedInputStream(fis, BUFFER);
+                            entry = new ZipEntry(tl.getAudio(iso).getAACName());
+                            out.putNextEntry(entry);
+                            while((count = origin.read(data, 0, BUFFER)) != -1) {
+                                out.write(data, 0, count);
+                            }
+                            origin.close();
+                        }
+                    }
+                }
+            }
+            
+            // La compression est finie
+        }
+        
+        // Effacement du fichier xml
+        xmlfile.delete();
+    }    
+    
+    //Plugins
+    private List<IDRM> pluginList = new ArrayList<>();
+    private IDRM drmToUse = new DRMLess();
+    
+    /**
+     * Set plug-in to use (DRM to use)
+     * @param name The name of this DRM
+     */
+    public void usePlugin(String name){
+        for(IDRM drm : pluginList){
+            if(drm.getName().equalsIgnoreCase(name)){
+                drmToUse = drm;
+            }
+        }
+    }
+    
+    /**
+     * Load all plug-ins (load all DRMs)
+     */
+    private void loadPlugins(){
+        File f = new File(getApplicationDirectory()+File.separator+"plugins");
+        if(f.exists()){
+            StandardPluginService pluginService = PluginServiceFactory.createPluginService(f);
+            pluginList = pluginService.initPlugins();
+        }
+    }
+    
+    private String getApplicationDirectory(){
+        if(System.getProperty("os.name").equalsIgnoreCase("Mac OS X")){
+            java.io.File file = new java.io.File("");
+            return file.getAbsolutePath();
+        }
+        String path = System.getProperty("user.dir");
+        if(path.toLowerCase().contains("jre")){
+            File f = new File(getClass().getProtectionDomain()
+                    .getCodeSource().getLocation().toString()
+                    .substring(6));
+            path = f.getParent();
+        }
+        return path;
     }
 }

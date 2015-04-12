@@ -1,12 +1,28 @@
 /*
- * To change this license header, choose License Headers in Project Properties.
- * To change this template file, choose Tools | Templates
- * and open the template in the editor.
+ * Copyright (C) 2015 Antoine
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
-
 package clib.dialog;
 
+import clib.filter.AACFilter;
+import clib.filter.AudioFilter;
+import clib.filter.M4AFilter;
+import clib.filter.MP3Filter;
 import clib.io.AudioFX;
+import clib.layer.AudioLayer;
+import clib.layer.FontLayer;
 import clib.layer.TextLayer.ISO_3166;
 import java.awt.Color;
 import java.awt.Font;
@@ -15,30 +31,30 @@ import java.awt.GraphicsEnvironment;
 import java.io.File;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.logging.Level;
-import java.util.logging.Logger;
-import javax.sound.sampled.LineUnavailableException;
 import javax.swing.DefaultComboBoxModel;
 import javax.swing.JColorChooser;
+import javax.swing.JFileChooser;
 import javax.swing.SpinnerNumberModel;
+import javax.swing.filechooser.FileFilter;
 import javax.swing.table.DefaultTableModel;
 import javax.swing.table.TableColumn;
 
 /**
  *
- * @author Yves
+ * @author Antoine
  */
-public class TextLayerDialog extends javax.swing.JDialog {
+public class TextLayerWithAudioDialog extends javax.swing.JDialog {
 
-    private ButtonPressed bp;
-    private Frame parent = null;
+    private ButtonPressed bp = ButtonPressed.NONE;
+    Frame parent = null;
     DefaultComboBoxModel comboFontModel = new DefaultComboBoxModel();
     DefaultComboBoxModel comboStyleModel = new DefaultComboBoxModel();
     SpinnerNumberModel spinSizeModel = new SpinnerNumberModel(12, 6, 600, 1);
     DefaultComboBoxModel comboISO3166Model = new DefaultComboBoxModel();
-    DefaultTableModel tableISO3166Model = null;
+    private DefaultTableModel tableISO3166Model = null;
     private Map<ISO_3166,String> text = new HashMap<>();
-    //Audio au = new Audio(); //TODO
+    private Map<ISO_3166,FontLayer> display = new HashMap<>();
+    private Map<ISO_3166,AudioLayer> audio = new HashMap<>();
     AudioFX afx = new AudioFX();
     
     public enum ButtonPressed{
@@ -70,17 +86,13 @@ public class TextLayerDialog extends javax.swing.JDialog {
     }
     
     /**
-     * Creates new form TextLayerDialog
+     * Creates new form TextLayerWithAudioDialog
      * @param parent
      * @param modal
      */
-    public TextLayerDialog(java.awt.Frame parent, boolean modal) {
+    public TextLayerWithAudioDialog(java.awt.Frame parent, boolean modal) {
         super(parent, modal);
         initComponents();
-        
-        this.parent = parent;
-        bp = ButtonPressed.NONE;
-        
         init();
     }
     
@@ -104,15 +116,15 @@ public class TextLayerDialog extends javax.swing.JDialog {
             comboISO3166Model.addElement(country);
         }
         
-        String[] head = new String[]{"Language", "Translation"};
+        String[] head = new String[]{"Language", "Translation", "Display", "Audio"};
         tableISO3166Model = new DefaultTableModel(
                 null,
                 head
         ){
             Class[] types = new Class [] {
-                    ISO_3166.class, String.class};
+                    ISO_3166.class, String.class, FontLayer.class, AudioLayer.class};
             boolean[] canEdit = new boolean [] {
-                    false, true};
+                    false, true, false, false};
             @Override
             public Class getColumnClass(int columnIndex) {return types [columnIndex];}
             @Override
@@ -120,7 +132,7 @@ public class TextLayerDialog extends javax.swing.JDialog {
         };
         ISO3166Table.setModel(tableISO3166Model);        
         TableColumn column;
-        for (int i = 0; i < 2; i++) {
+        for (int i = 0; i < 4; i++) {
             column = ISO3166Table.getColumnModel().getColumn(i);
             switch(i){
                 case 0:
@@ -129,13 +141,14 @@ public class TextLayerDialog extends javax.swing.JDialog {
                 case 1:
                     column.setPreferredWidth(30);
                     break; //Translation
+                case 2:
+                    column.setPreferredWidth(30);
+                    break; //Display
+                case 3:
+                    column.setPreferredWidth(30);
+                    break; //Audio
             }
         }
-        
-//        au.setRemotePauseButton(btnPause);
-//        au.setRemotePlayButton(btnPlay);
-//        au.setRemoteRecButton(btnRecord);
-//        au.setRemoteStopButton(btnStop);
     }
     
     public boolean showDialog(){
@@ -144,10 +157,12 @@ public class TextLayerDialog extends javax.swing.JDialog {
         return bp==ButtonPressed.OK_BUTTON;
     }
     
-    public void setTexts(Map<ISO_3166,String> text){
+    public void setUP(Map<ISO_3166,String> text, Map<ISO_3166,FontLayer> fo, Map<ISO_3166,AudioLayer> au){
         this.text = text;
+        this.display = fo;
+        this.audio = au;
         for(ISO_3166 country : text.keySet()){
-            Object[] row = {country, text.get(country)};
+            Object[] row = {country, text.get(country), fo.getOrDefault(country, new FontLayer()), au.getOrDefault(country, new AudioLayer())};
             tableISO3166Model.addRow(row);
         }
     }
@@ -156,8 +171,17 @@ public class TextLayerDialog extends javax.swing.JDialog {
         return text;
     }
     
+    public Map<ISO_3166,FontLayer> getDisplays(){
+        return display;
+    }
+    
+    public Map<ISO_3166,AudioLayer> getAudios(){
+        return audio;
+    }
+    
     public void setTextColor(Color color){
         lblColor.setBackground(color);
+        tfDisplayText.setForeground(color);
     }
     
     public Color getTextColor(){
@@ -211,29 +235,41 @@ public class TextLayerDialog extends javax.swing.JDialog {
         tfISO3166 = new javax.swing.JTextField();
         btnAddISO3166 = new javax.swing.JButton();
         btnDeleteISO3166 = new javax.swing.JButton();
-        jScrollPane1 = new javax.swing.JScrollPane();
-        ISO3166Table = new javax.swing.JTable();
         btnModifyISO3166 = new javax.swing.JButton();
-        btnRecord = new javax.swing.JButton();
         btnPlay = new javax.swing.JButton();
         btnPause = new javax.swing.JButton();
         btnStop = new javax.swing.JButton();
-        jPanel2 = new javax.swing.JPanel();
+        tfAudioPath = new javax.swing.JTextField();
+        btnAudoPath = new javax.swing.JButton();
+        tfAudioName = new javax.swing.JTextField();
         lblColor = new javax.swing.JLabel();
-        jPanel3 = new javax.swing.JPanel();
         cbFont = new javax.swing.JComboBox();
         cbFontStyle = new javax.swing.JComboBox();
         spinFontSize = new javax.swing.JSpinner();
-        OK_Button = new javax.swing.JButton();
+        tfDisplayText = new javax.swing.JTextField();
+        jScrollPane1 = new javax.swing.JScrollPane();
+        ISO3166Table = new javax.swing.JTable();
         Cancel_Button = new javax.swing.JButton();
+        OK_Button = new javax.swing.JButton();
 
         setDefaultCloseOperation(javax.swing.WindowConstants.DISPOSE_ON_CLOSE);
+        setMinimumSize(new java.awt.Dimension(1040, 555));
 
-        jPanel1.setBorder(javax.swing.BorderFactory.createTitledBorder("Text and audio"));
+        jPanel1.setBorder(javax.swing.BorderFactory.createTitledBorder("Text, audio, font and color"));
+        jPanel1.setLayout(null);
 
         cbISO3166.setModel(new javax.swing.DefaultComboBoxModel(new String[] { "Item 1", "Item 2", "Item 3", "Item 4" }));
+        jPanel1.add(cbISO3166);
+        cbISO3166.setBounds(10, 100, 224, 30);
 
         tfISO3166.setText("My text.");
+        tfISO3166.addKeyListener(new java.awt.event.KeyAdapter() {
+            public void keyReleased(java.awt.event.KeyEvent evt) {
+                tfISO3166KeyReleased(evt);
+            }
+        });
+        jPanel1.add(tfISO3166);
+        tfISO3166.setBounds(10, 20, 500, 30);
 
         btnAddISO3166.setText("Add");
         btnAddISO3166.addActionListener(new java.awt.event.ActionListener() {
@@ -241,6 +277,8 @@ public class TextLayerDialog extends javax.swing.JDialog {
                 btnAddISO3166ActionPerformed(evt);
             }
         });
+        jPanel1.add(btnAddISO3166);
+        btnAddISO3166.setBounds(240, 100, 85, 30);
 
         btnDeleteISO3166.setText("Delete");
         btnDeleteISO3166.addActionListener(new java.awt.event.ActionListener() {
@@ -248,6 +286,113 @@ public class TextLayerDialog extends javax.swing.JDialog {
                 btnDeleteISO3166ActionPerformed(evt);
             }
         });
+        jPanel1.add(btnDeleteISO3166);
+        btnDeleteISO3166.setBounds(420, 100, 85, 30);
+
+        btnModifyISO3166.setText("Modify");
+        btnModifyISO3166.addActionListener(new java.awt.event.ActionListener() {
+            public void actionPerformed(java.awt.event.ActionEvent evt) {
+                btnModifyISO3166ActionPerformed(evt);
+            }
+        });
+        jPanel1.add(btnModifyISO3166);
+        btnModifyISO3166.setBounds(330, 100, 85, 30);
+
+        btnPlay.setIcon(new javax.swing.ImageIcon(getClass().getResource("/clib/images/xsmall_play.png"))); // NOI18N
+        btnPlay.setToolTipText("Play");
+        btnPlay.addActionListener(new java.awt.event.ActionListener() {
+            public void actionPerformed(java.awt.event.ActionEvent evt) {
+                btnPlayActionPerformed(evt);
+            }
+        });
+        jPanel1.add(btnPlay);
+        btnPlay.setBounds(510, 20, 43, 70);
+
+        btnPause.setIcon(new javax.swing.ImageIcon(getClass().getResource("/clib/images/xsmall_pause.png"))); // NOI18N
+        btnPause.setToolTipText("Pause");
+        btnPause.setEnabled(false);
+        btnPause.addActionListener(new java.awt.event.ActionListener() {
+            public void actionPerformed(java.awt.event.ActionEvent evt) {
+                btnPauseActionPerformed(evt);
+            }
+        });
+        jPanel1.add(btnPause);
+        btnPause.setBounds(610, 20, 43, 70);
+
+        btnStop.setIcon(new javax.swing.ImageIcon(getClass().getResource("/clib/images/xsmall_stop.png"))); // NOI18N
+        btnStop.setToolTipText("Stop");
+        btnStop.setEnabled(false);
+        btnStop.addActionListener(new java.awt.event.ActionListener() {
+            public void actionPerformed(java.awt.event.ActionEvent evt) {
+                btnStopActionPerformed(evt);
+            }
+        });
+        jPanel1.add(btnStop);
+        btnStop.setBounds(560, 20, 43, 70);
+
+        tfAudioPath.setToolTipText("Choose audio...");
+        jPanel1.add(tfAudioPath);
+        tfAudioPath.setBounds(10, 60, 315, 30);
+
+        btnAudoPath.setText("...");
+        btnAudoPath.setToolTipText("Choose an AAC or M4A audio file...");
+        btnAudoPath.addActionListener(new java.awt.event.ActionListener() {
+            public void actionPerformed(java.awt.event.ActionEvent evt) {
+                btnAudoPathActionPerformed(evt);
+            }
+        });
+        jPanel1.add(btnAudoPath);
+        btnAudoPath.setBounds(420, 60, 85, 30);
+
+        tfAudioName.setText("ID");
+        tfAudioName.setToolTipText("Choose a name for the audio");
+        jPanel1.add(tfAudioName);
+        tfAudioName.setBounds(330, 60, 85, 30);
+
+        lblColor.setBackground(new java.awt.Color(0, 0, 0));
+        lblColor.setText(" ");
+        lblColor.setBorder(javax.swing.BorderFactory.createLineBorder(new java.awt.Color(0, 0, 0)));
+        lblColor.setOpaque(true);
+        lblColor.addMouseListener(new java.awt.event.MouseAdapter() {
+            public void mouseClicked(java.awt.event.MouseEvent evt) {
+                lblColorMouseClicked(evt);
+            }
+        });
+        jPanel1.add(lblColor);
+        lblColor.setBounds(900, 60, 130, 30);
+
+        cbFont.setModel(new javax.swing.DefaultComboBoxModel(new String[] { "Item 1", "Item 2", "Item 3", "Item 4" }));
+        cbFont.addActionListener(new java.awt.event.ActionListener() {
+            public void actionPerformed(java.awt.event.ActionEvent evt) {
+                cbFontActionPerformed(evt);
+            }
+        });
+        jPanel1.add(cbFont);
+        cbFont.setBounds(660, 20, 370, 30);
+
+        cbFontStyle.setModel(new javax.swing.DefaultComboBoxModel(new String[] { "Item 1", "Item 2", "Item 3", "Item 4" }));
+        cbFontStyle.addActionListener(new java.awt.event.ActionListener() {
+            public void actionPerformed(java.awt.event.ActionEvent evt) {
+                cbFontStyleActionPerformed(evt);
+            }
+        });
+        jPanel1.add(cbFontStyle);
+        cbFontStyle.setBounds(660, 60, 110, 30);
+
+        spinFontSize.addChangeListener(new javax.swing.event.ChangeListener() {
+            public void stateChanged(javax.swing.event.ChangeEvent evt) {
+                spinFontSizeStateChanged(evt);
+            }
+        });
+        jPanel1.add(spinFontSize);
+        spinFontSize.setBounds(780, 60, 110, 30);
+
+        tfDisplayText.setEditable(false);
+        tfDisplayText.setFont(new java.awt.Font("Tahoma", 0, 18)); // NOI18N
+        tfDisplayText.setHorizontalAlignment(javax.swing.JTextField.CENTER);
+        tfDisplayText.setText("My text.");
+        jPanel1.add(tfDisplayText);
+        tfDisplayText.setBounds(10, 140, 1020, 70);
 
         jScrollPane1.setVerticalScrollBarPolicy(javax.swing.ScrollPaneConstants.VERTICAL_SCROLLBAR_ALWAYS);
 
@@ -264,151 +409,8 @@ public class TextLayerDialog extends javax.swing.JDialog {
         ));
         jScrollPane1.setViewportView(ISO3166Table);
 
-        btnModifyISO3166.setText("Modify");
-        btnModifyISO3166.addActionListener(new java.awt.event.ActionListener() {
-            public void actionPerformed(java.awt.event.ActionEvent evt) {
-                btnModifyISO3166ActionPerformed(evt);
-            }
-        });
-
-        btnRecord.setIcon(new javax.swing.ImageIcon(getClass().getResource("/clib/images/xsmall_record.png"))); // NOI18N
-        btnRecord.setToolTipText("Record");
-        btnRecord.setEnabled(false);
-        btnRecord.addActionListener(new java.awt.event.ActionListener() {
-            public void actionPerformed(java.awt.event.ActionEvent evt) {
-                btnRecordActionPerformed(evt);
-            }
-        });
-
-        btnPlay.setIcon(new javax.swing.ImageIcon(getClass().getResource("/clib/images/xsmall_play.png"))); // NOI18N
-        btnPlay.setToolTipText("Play");
-        btnPlay.addActionListener(new java.awt.event.ActionListener() {
-            public void actionPerformed(java.awt.event.ActionEvent evt) {
-                btnPlayActionPerformed(evt);
-            }
-        });
-
-        btnPause.setIcon(new javax.swing.ImageIcon(getClass().getResource("/clib/images/xsmall_pause.png"))); // NOI18N
-        btnPause.setToolTipText("Pause");
-        btnPause.addActionListener(new java.awt.event.ActionListener() {
-            public void actionPerformed(java.awt.event.ActionEvent evt) {
-                btnPauseActionPerformed(evt);
-            }
-        });
-
-        btnStop.setIcon(new javax.swing.ImageIcon(getClass().getResource("/clib/images/xsmall_stop.png"))); // NOI18N
-        btnStop.setToolTipText("Stop");
-        btnStop.addActionListener(new java.awt.event.ActionListener() {
-            public void actionPerformed(java.awt.event.ActionEvent evt) {
-                btnStopActionPerformed(evt);
-            }
-        });
-
-        javax.swing.GroupLayout jPanel1Layout = new javax.swing.GroupLayout(jPanel1);
-        jPanel1.setLayout(jPanel1Layout);
-        jPanel1Layout.setHorizontalGroup(
-            jPanel1Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-            .addGroup(javax.swing.GroupLayout.Alignment.TRAILING, jPanel1Layout.createSequentialGroup()
-                .addContainerGap(javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
-                .addGroup(jPanel1Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING, false)
-                    .addComponent(jScrollPane1)
-                    .addGroup(jPanel1Layout.createSequentialGroup()
-                        .addGroup(jPanel1Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-                            .addGroup(jPanel1Layout.createSequentialGroup()
-                                .addComponent(cbISO3166, javax.swing.GroupLayout.PREFERRED_SIZE, 224, javax.swing.GroupLayout.PREFERRED_SIZE)
-                                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
-                                .addComponent(btnAddISO3166, javax.swing.GroupLayout.PREFERRED_SIZE, 85, javax.swing.GroupLayout.PREFERRED_SIZE)
-                                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                                .addComponent(btnModifyISO3166, javax.swing.GroupLayout.PREFERRED_SIZE, 85, javax.swing.GroupLayout.PREFERRED_SIZE)
-                                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                                .addComponent(btnDeleteISO3166, javax.swing.GroupLayout.PREFERRED_SIZE, 85, javax.swing.GroupLayout.PREFERRED_SIZE))
-                            .addComponent(tfISO3166))
-                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                        .addComponent(btnRecord, javax.swing.GroupLayout.PREFERRED_SIZE, 43, javax.swing.GroupLayout.PREFERRED_SIZE)
-                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                        .addComponent(btnPlay, javax.swing.GroupLayout.PREFERRED_SIZE, 43, javax.swing.GroupLayout.PREFERRED_SIZE)
-                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                        .addComponent(btnPause, javax.swing.GroupLayout.PREFERRED_SIZE, 43, javax.swing.GroupLayout.PREFERRED_SIZE)
-                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                        .addComponent(btnStop, javax.swing.GroupLayout.PREFERRED_SIZE, 43, javax.swing.GroupLayout.PREFERRED_SIZE)))
-                .addGap(162, 162, 162))
-        );
-        jPanel1Layout.setVerticalGroup(
-            jPanel1Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-            .addGroup(jPanel1Layout.createSequentialGroup()
-                .addGroup(jPanel1Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING, false)
-                    .addComponent(btnStop, javax.swing.GroupLayout.Alignment.LEADING, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
-                    .addComponent(btnPause, javax.swing.GroupLayout.Alignment.LEADING, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
-                    .addComponent(btnPlay, javax.swing.GroupLayout.Alignment.LEADING, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
-                    .addGroup(javax.swing.GroupLayout.Alignment.LEADING, jPanel1Layout.createSequentialGroup()
-                        .addComponent(tfISO3166, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
-                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                        .addGroup(jPanel1Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
-                            .addComponent(btnAddISO3166)
-                            .addComponent(btnModifyISO3166)
-                            .addComponent(btnDeleteISO3166)
-                            .addComponent(cbISO3166, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)))
-                    .addComponent(btnRecord, javax.swing.GroupLayout.Alignment.LEADING, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE))
-                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                .addComponent(jScrollPane1, javax.swing.GroupLayout.PREFERRED_SIZE, 144, javax.swing.GroupLayout.PREFERRED_SIZE))
-        );
-
-        jPanel2.setBorder(javax.swing.BorderFactory.createTitledBorder("Color"));
-
-        lblColor.setBackground(new java.awt.Color(0, 0, 0));
-        lblColor.setText(" ");
-        lblColor.setBorder(javax.swing.BorderFactory.createLineBorder(new java.awt.Color(0, 0, 0)));
-        lblColor.setOpaque(true);
-        lblColor.addMouseListener(new java.awt.event.MouseAdapter() {
-            public void mouseClicked(java.awt.event.MouseEvent evt) {
-                lblColorMouseClicked(evt);
-            }
-        });
-
-        javax.swing.GroupLayout jPanel2Layout = new javax.swing.GroupLayout(jPanel2);
-        jPanel2.setLayout(jPanel2Layout);
-        jPanel2Layout.setHorizontalGroup(
-            jPanel2Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-            .addComponent(lblColor, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
-        );
-        jPanel2Layout.setVerticalGroup(
-            jPanel2Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-            .addComponent(lblColor, javax.swing.GroupLayout.PREFERRED_SIZE, 30, javax.swing.GroupLayout.PREFERRED_SIZE)
-        );
-
-        jPanel3.setBorder(javax.swing.BorderFactory.createTitledBorder("Font"));
-
-        cbFont.setModel(new javax.swing.DefaultComboBoxModel(new String[] { "Item 1", "Item 2", "Item 3", "Item 4" }));
-
-        cbFontStyle.setModel(new javax.swing.DefaultComboBoxModel(new String[] { "Item 1", "Item 2", "Item 3", "Item 4" }));
-
-        javax.swing.GroupLayout jPanel3Layout = new javax.swing.GroupLayout(jPanel3);
-        jPanel3.setLayout(jPanel3Layout);
-        jPanel3Layout.setHorizontalGroup(
-            jPanel3Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-            .addComponent(cbFont, 0, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
-            .addGroup(jPanel3Layout.createSequentialGroup()
-                .addComponent(cbFontStyle, javax.swing.GroupLayout.PREFERRED_SIZE, 120, javax.swing.GroupLayout.PREFERRED_SIZE)
-                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                .addComponent(spinFontSize, javax.swing.GroupLayout.PREFERRED_SIZE, 100, javax.swing.GroupLayout.PREFERRED_SIZE)
-                .addGap(0, 0, Short.MAX_VALUE))
-        );
-        jPanel3Layout.setVerticalGroup(
-            jPanel3Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-            .addGroup(jPanel3Layout.createSequentialGroup()
-                .addComponent(cbFont, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
-                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                .addGroup(jPanel3Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
-                    .addComponent(cbFontStyle, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
-                    .addComponent(spinFontSize, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)))
-        );
-
-        OK_Button.setText("OK");
-        OK_Button.addActionListener(new java.awt.event.ActionListener() {
-            public void actionPerformed(java.awt.event.ActionEvent evt) {
-                OK_ButtonActionPerformed(evt);
-            }
-        });
+        jPanel1.add(jScrollPane1);
+        jScrollPane1.setBounds(10, 220, 1020, 280);
 
         Cancel_Button.setText("Cancel");
         Cancel_Button.addActionListener(new java.awt.event.ActionListener() {
@@ -417,32 +419,30 @@ public class TextLayerDialog extends javax.swing.JDialog {
             }
         });
 
+        OK_Button.setText("OK");
+        OK_Button.addActionListener(new java.awt.event.ActionListener() {
+            public void actionPerformed(java.awt.event.ActionEvent evt) {
+                OK_ButtonActionPerformed(evt);
+            }
+        });
+
         javax.swing.GroupLayout layout = new javax.swing.GroupLayout(getContentPane());
         getContentPane().setLayout(layout);
         layout.setHorizontalGroup(
             layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-            .addGroup(javax.swing.GroupLayout.Alignment.TRAILING, layout.createSequentialGroup()
-                .addContainerGap(javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+            .addGroup(layout.createSequentialGroup()
+                .addContainerGap(824, Short.MAX_VALUE)
                 .addComponent(Cancel_Button, javax.swing.GroupLayout.PREFERRED_SIZE, 100, javax.swing.GroupLayout.PREFERRED_SIZE)
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
                 .addComponent(OK_Button, javax.swing.GroupLayout.PREFERRED_SIZE, 100, javax.swing.GroupLayout.PREFERRED_SIZE)
                 .addContainerGap())
-            .addGroup(layout.createSequentialGroup()
-                .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING, false)
-                    .addComponent(jPanel2, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
-                    .addComponent(jPanel3, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
-                    .addComponent(jPanel1, javax.swing.GroupLayout.PREFERRED_SIZE, 718, javax.swing.GroupLayout.PREFERRED_SIZE))
-                .addGap(0, 0, Short.MAX_VALUE))
+            .addComponent(jPanel1, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
         );
         layout.setVerticalGroup(
             layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
             .addGroup(layout.createSequentialGroup()
-                .addComponent(jPanel1, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
+                .addComponent(jPanel1, javax.swing.GroupLayout.DEFAULT_SIZE, 515, Short.MAX_VALUE)
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                .addComponent(jPanel2, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
-                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                .addComponent(jPanel3, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
-                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
                 .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
                     .addComponent(OK_Button)
                     .addComponent(Cancel_Button))
@@ -452,24 +452,14 @@ public class TextLayerDialog extends javax.swing.JDialog {
         pack();
     }// </editor-fold>//GEN-END:initComponents
 
-    private void lblColorMouseClicked(java.awt.event.MouseEvent evt) {//GEN-FIRST:event_lblColorMouseClicked
-        lblColor.setBackground(JColorChooser.showDialog(parent, "Choose a color", lblColor.getBackground()));
-    }//GEN-LAST:event_lblColorMouseClicked
-
-    private void OK_ButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_OK_ButtonActionPerformed
-        bp = ButtonPressed.OK_BUTTON;
-        dispose();
-    }//GEN-LAST:event_OK_ButtonActionPerformed
-
-    private void Cancel_ButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_Cancel_ButtonActionPerformed
-        bp = ButtonPressed.CANCEL_BUTTON;
-        dispose();
-    }//GEN-LAST:event_Cancel_ButtonActionPerformed
-
     private void btnAddISO3166ActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_btnAddISO3166ActionPerformed
-        Object[] row = {(ISO_3166)cbISO3166.getSelectedItem(), tfISO3166.getText()};
+        FontLayer fl = FontLayer.create(getTextFont(), lblColor.getBackground());
+        AudioLayer al = AudioLayer.create(tfAudioName.getText(), tfAudioPath.getText());
+        Object[] row = {(ISO_3166)cbISO3166.getSelectedItem(), tfISO3166.getText(), fl, al};
         tableISO3166Model.addRow(row);
         text.put((ISO_3166)cbISO3166.getSelectedItem(), tfISO3166.getText());
+        display.put((ISO_3166)cbISO3166.getSelectedItem(), fl);
+        audio.put((ISO_3166)cbISO3166.getSelectedItem(), al);
     }//GEN-LAST:event_btnAddISO3166ActionPerformed
 
     private void btnDeleteISO3166ActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_btnDeleteISO3166ActionPerformed
@@ -477,6 +467,8 @@ public class TextLayerDialog extends javax.swing.JDialog {
             int tabtemp[] = ISO3166Table.getSelectedRows();
             for (int i=tabtemp.length-1;i>=0;i--){
                 text.remove((ISO_3166)ISO3166Table.getValueAt(tabtemp[i], 0));
+                display.remove((ISO_3166)ISO3166Table.getValueAt(tabtemp[i], 0));
+                audio.remove((ISO_3166)ISO3166Table.getValueAt(tabtemp[i], 0));
                 tableISO3166Model.removeRow(tabtemp[i]);
             }
         }catch(Exception exc){}
@@ -484,48 +476,101 @@ public class TextLayerDialog extends javax.swing.JDialog {
 
     private void btnModifyISO3166ActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_btnModifyISO3166ActionPerformed
         if(ISO3166Table.getSelectedRow() != -1){
+            FontLayer fl = FontLayer.create(getTextFont(), lblColor.getBackground());
+            AudioLayer al = AudioLayer.create(tfAudioName.getText(), tfAudioPath.getText());
             ISO3166Table.setValueAt(tfISO3166.getText(), ISO3166Table.getSelectedRow(), 1);
+            ISO3166Table.setValueAt(fl, ISO3166Table.getSelectedRow(), 2);
+            ISO3166Table.setValueAt(al, ISO3166Table.getSelectedRow(), 3);
             text.put((ISO_3166)cbISO3166.getSelectedItem(), tfISO3166.getText());
+            display.put((ISO_3166)cbISO3166.getSelectedItem(), fl);
+            audio.put((ISO_3166)cbISO3166.getSelectedItem(), al);            
         }
     }//GEN-LAST:event_btnModifyISO3166ActionPerformed
 
-    private void btnRecordActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_btnRecordActionPerformed
-//        if(ISO3166Table.getSelectedRow() != -1){
-//            ISO_3166 code = (ISO_3166)ISO3166Table.getValueAt(ISO3166Table.getSelectedRow(), 0);
-//            File file = new File(getMainDirectory()+File.separator+"temp");
-//            if(file.exists()==false){
-//                file.mkdir();
-//            }
-//            afx.setRecordPath("C:\\Users\\Phil\\Documents\\junk.wav");
-//            afx.recordStart();
-//        }
-    }//GEN-LAST:event_btnRecordActionPerformed
-
     private void btnPlayActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_btnPlayActionPerformed
-//        if(ISO3166Table.getSelectedRow() != -1){
-//            ISO_3166 code = (ISO_3166)ISO3166Table.getValueAt(ISO3166Table.getSelectedRow(), 0);
-//            afx.setListenPath("C:\\Users\\Antoine\\Music\\iTunes\\iTunes Media\\Music\\Fuchigami Mai & Suzai Aya & Okamoto Nobu\\Seishun Satsubatsuron\\01 Seishun Satsubatsuron.m4a");
-//            afx.listenStart();
-//            try {
-//                afx.viewMixerInfo();
-//            } catch (LineUnavailableException ex) {
-//                Logger.getLogger(TextLayerDialog.class.getName()).log(Level.SEVERE, null, ex);
-//            }
-//        }
+        if(ISO3166Table.getSelectedRow() != -1){
+            AudioLayer al = (AudioLayer)ISO3166Table.getValueAt(ISO3166Table.getSelectedRow(), 3);
+            if(al.getAACPath().isEmpty() == false){
+                afx.setListenPath(al.getAACPath());
+                afx.listenStart();
+            }            
+        }
     }//GEN-LAST:event_btnPlayActionPerformed
 
     private void btnPauseActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_btnPauseActionPerformed
         if(ISO3166Table.getSelectedRow() != -1){
-//            au.pausePlaying();
+            //            au.pausePlaying();
         }
     }//GEN-LAST:event_btnPauseActionPerformed
 
     private void btnStopActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_btnStopActionPerformed
         if(ISO3166Table.getSelectedRow() != -1){
             afx.listenStop();
-//            afx.recordStop();
         }
     }//GEN-LAST:event_btnStopActionPerformed
+
+    private void lblColorMouseClicked(java.awt.event.MouseEvent evt) {//GEN-FIRST:event_lblColorMouseClicked
+        lblColor.setBackground(JColorChooser.showDialog(parent, "Choose a color", lblColor.getBackground()));
+        tfDisplayText.setForeground(lblColor.getBackground());
+    }//GEN-LAST:event_lblColorMouseClicked
+
+    private void Cancel_ButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_Cancel_ButtonActionPerformed
+        bp = ButtonPressed.CANCEL_BUTTON;
+        dispose();
+    }//GEN-LAST:event_Cancel_ButtonActionPerformed
+
+    private void OK_ButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_OK_ButtonActionPerformed
+        bp = ButtonPressed.OK_BUTTON;
+        dispose();
+    }//GEN-LAST:event_OK_ButtonActionPerformed
+
+    private void cbFontActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_cbFontActionPerformed
+        try{
+            Font f = getTextFont();
+            tfDisplayText.setFont(f);
+        }catch (Exception ex){
+           
+        }        
+    }//GEN-LAST:event_cbFontActionPerformed
+
+    private void cbFontStyleActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_cbFontStyleActionPerformed
+        try{
+            Font f = getTextFont();
+            tfDisplayText.setFont(f);
+        }catch (Exception ex){
+           
+        }
+    }//GEN-LAST:event_cbFontStyleActionPerformed
+
+    private void spinFontSizeStateChanged(javax.swing.event.ChangeEvent evt) {//GEN-FIRST:event_spinFontSizeStateChanged
+        try{
+            Font f = getTextFont();
+            tfDisplayText.setFont(f);
+        }catch (Exception ex){
+           
+        }
+    }//GEN-LAST:event_spinFontSizeStateChanged
+
+    private void btnAudoPathActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_btnAudoPathActionPerformed
+        JFileChooser fc = new JFileChooser();
+        for (FileFilter f : fc.getChoosableFileFilters()){
+                fc.removeChoosableFileFilter(f);
+            }
+            fc.setDialogTitle("Choose an MP3/AAC/M4A sound...");
+            fc.setDialogType(JFileChooser.OPEN_DIALOG);
+            fc.addChoosableFileFilter(new MP3Filter());
+            fc.addChoosableFileFilter(new AACFilter());
+            fc.addChoosableFileFilter(new M4AFilter());
+            fc.addChoosableFileFilter(new AudioFilter());
+            int z = fc.showOpenDialog(this);
+            if (z == JFileChooser.APPROVE_OPTION){
+                tfAudioPath.setText(fc.getSelectedFile().getAbsolutePath());
+            }
+    }//GEN-LAST:event_btnAudoPathActionPerformed
+
+    private void tfISO3166KeyReleased(java.awt.event.KeyEvent evt) {//GEN-FIRST:event_tfISO3166KeyReleased
+        tfDisplayText.setText(tfISO3166.getText());
+    }//GEN-LAST:event_tfISO3166KeyReleased
 
     /**
      * @param args the command line arguments
@@ -543,8 +588,14 @@ public class TextLayerDialog extends javax.swing.JDialog {
                     break;
                 }
             }
-        } catch (ClassNotFoundException | InstantiationException | IllegalAccessException | javax.swing.UnsupportedLookAndFeelException ex) {
-            java.util.logging.Logger.getLogger(TextLayerDialog.class.getName()).log(java.util.logging.Level.SEVERE, null, ex);
+        } catch (ClassNotFoundException ex) {
+            java.util.logging.Logger.getLogger(TextLayerWithAudioDialog.class.getName()).log(java.util.logging.Level.SEVERE, null, ex);
+        } catch (InstantiationException ex) {
+            java.util.logging.Logger.getLogger(TextLayerWithAudioDialog.class.getName()).log(java.util.logging.Level.SEVERE, null, ex);
+        } catch (IllegalAccessException ex) {
+            java.util.logging.Logger.getLogger(TextLayerWithAudioDialog.class.getName()).log(java.util.logging.Level.SEVERE, null, ex);
+        } catch (javax.swing.UnsupportedLookAndFeelException ex) {
+            java.util.logging.Logger.getLogger(TextLayerWithAudioDialog.class.getName()).log(java.util.logging.Level.SEVERE, null, ex);
         }
         //</editor-fold>
 
@@ -552,7 +603,7 @@ public class TextLayerDialog extends javax.swing.JDialog {
         java.awt.EventQueue.invokeLater(new Runnable() {
             @Override
             public void run() {
-                TextLayerDialog dialog = new TextLayerDialog(new javax.swing.JFrame(), true);
+                TextLayerWithAudioDialog dialog = new TextLayerWithAudioDialog(new javax.swing.JFrame(), true);
                 dialog.addWindowListener(new java.awt.event.WindowAdapter() {
                     @Override
                     public void windowClosing(java.awt.event.WindowEvent e) {
@@ -569,21 +620,22 @@ public class TextLayerDialog extends javax.swing.JDialog {
     private javax.swing.JTable ISO3166Table;
     private javax.swing.JButton OK_Button;
     private javax.swing.JButton btnAddISO3166;
+    private javax.swing.JButton btnAudoPath;
     private javax.swing.JButton btnDeleteISO3166;
     private javax.swing.JButton btnModifyISO3166;
     private javax.swing.JButton btnPause;
     private javax.swing.JButton btnPlay;
-    private javax.swing.JButton btnRecord;
     private javax.swing.JButton btnStop;
     private javax.swing.JComboBox cbFont;
     private javax.swing.JComboBox cbFontStyle;
     private javax.swing.JComboBox cbISO3166;
     private javax.swing.JPanel jPanel1;
-    private javax.swing.JPanel jPanel2;
-    private javax.swing.JPanel jPanel3;
     private javax.swing.JScrollPane jScrollPane1;
     private javax.swing.JLabel lblColor;
     private javax.swing.JSpinner spinFontSize;
+    private javax.swing.JTextField tfAudioName;
+    private javax.swing.JTextField tfAudioPath;
+    private javax.swing.JTextField tfDisplayText;
     private javax.swing.JTextField tfISO3166;
     // End of variables declaration//GEN-END:variables
 }

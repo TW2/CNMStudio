@@ -199,6 +199,7 @@
               <Image iconType="3" name="/clib/images/xsmall_record.png"/>
             </Property>
             <Property name="toolTipText" type="java.lang.String" value="Record"/>
+            <Property name="enabled" type="boolean" value="false"/>
           </Properties>
           <Events>
             <EventHandler event="actionPerformed" listener="java.awt.event.ActionListener" parameters="java.awt.event.ActionEvent" handler="btnRecordActionPerformed"/>

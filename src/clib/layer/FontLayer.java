@@ -14,58 +14,49 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
-
 package clib.layer;
 
-import java.io.File;
+import java.awt.Color;
+import java.awt.Font;
 
 /**
  *
- * @author Yves
+ * @author Antoine
  */
-public class AudioLayer {
+public class FontLayer {
     
-    private String name = "ID";
-    private String aacpath = "";
+    Font font = new Font("Serif", Font.PLAIN, 12);
+    Color color  = Color.black;
     
-    public AudioLayer(){
+    public FontLayer(){
         
     }
     
-    public static AudioLayer create(String name, String aacpath){
-        AudioLayer al = new AudioLayer();
-        al.name = name.isEmpty() ? "ID" : name;
-        al.aacpath = aacpath;
-        return al;
+    public static FontLayer create(Font f, Color c){
+        FontLayer fl = new FontLayer();
+        fl.font = f;
+        fl.color = c;
+        return fl;
     }
     
-    public void setName(String name){
-        this.name = name;
+    public void setFont(Font f){
+        font = f;
     }
     
-    public String getName(){
-        return name;
+    public Font getFont(){
+        return font;
     }
     
-    public void setAACPath(String aacpath){
-        this.aacpath = aacpath;
+    public void setColor(Color c){
+        color = c;
     }
     
-    public String getAACPath(){
-        return aacpath;
-    }
-    
-    public String getAACName(){
-        File f = new File(aacpath);
-        return f.getName();
+    public Color getColor(){
+        return color;
     }
     
     @Override
     public String toString(){
-        if(aacpath.isEmpty()){
-            return "";
-        }
-        return name + " - " + new File(aacpath).getName();
+        return font.getFamily();
     }
-    
 }

@@ -20,6 +20,7 @@ import clib.filter.CNMFilter;
 import clib.layer.PageLayer;
 import clib.layer.TextLayer;
 import java.awt.Dimension;
+import java.io.File;
 import java.io.IOException;
 import java.util.Set;
 import java.util.logging.Level;
@@ -41,6 +42,7 @@ public class MainFrame extends javax.swing.JFrame {
     private final DefaultComboBoxModel comboLangModel = new DefaultComboBoxModel();
     private final PageReader pr = new PageReader();
     private PageCreator pc;
+    private static boolean isStudio = true;
     
     /**
      * Creates new form MainFrame
@@ -102,6 +104,10 @@ public class MainFrame extends javax.swing.JFrame {
             }
         }
     }
+    
+    public static boolean isStudio(){
+        return isStudio;
+    }
 
     /**
      * This method is called from within the constructor to initialize the form.
@@ -126,6 +132,12 @@ public class MainFrame extends javax.swing.JFrame {
 
         setDefaultCloseOperation(javax.swing.WindowConstants.EXIT_ON_CLOSE);
         setTitle("Comics'n'Mangas Studio");
+
+        jTabbedPane1.addChangeListener(new javax.swing.event.ChangeListener() {
+            public void stateChanged(javax.swing.event.ChangeEvent evt) {
+                jTabbedPane1StateChanged(evt);
+            }
+        });
 
         StudioPanel.setLayout(new java.awt.BorderLayout());
         jTabbedPane1.addTab("Studio", StudioPanel);
@@ -232,8 +244,14 @@ public class MainFrame extends javax.swing.JFrame {
         int z = fcXML.showOpenDialog(this);
         if (z == JFileChooser.APPROVE_OPTION){
             try {
-                Reader reader = new Reader(fcXML.getSelectedFile().getAbsolutePath());
-                pr.setPage(reader.getPage());
+                Reader r = new Reader();
+                File f = new File(System.getProperty("user.home") + File.separator + ".cnmFiles");
+                if(f.exists()==false){
+                    f.mkdir();
+                }                
+                pr.setPage(r.readCNM(fcXML.getSelectedFile().getAbsolutePath(), System.getProperty("user.home") + File.separator + ".cnmFiles" + File.separator));
+//                Reader reader = new Reader(fcXML.getSelectedFile().getAbsolutePath());
+//                pr.setPage(reader.getPage());
                 pr.viewCurrent();
                 searchForLanguage();
             } catch (ParserConfigurationException | SAXException | IOException ex) {
@@ -265,6 +283,10 @@ public class MainFrame extends javax.swing.JFrame {
 
         }
     }//GEN-LAST:event_btnNextPageActionPerformed
+
+    private void jTabbedPane1StateChanged(javax.swing.event.ChangeEvent evt) {//GEN-FIRST:event_jTabbedPane1StateChanged
+        isStudio = jTabbedPane1.getSelectedIndex() == 0;
+    }//GEN-LAST:event_jTabbedPane1StateChanged
 
     /**
      * @param args the command line arguments

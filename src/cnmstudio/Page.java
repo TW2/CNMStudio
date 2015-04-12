@@ -191,7 +191,7 @@ public class Page extends JPanel {
         
         if(PageCreator.getLastTextLayer() != null){
             if(evt.getButton()==1){
-                TextLayer tl = PageCreator.getLastTextLayer();
+                TextLayer tl = PageCreator.getLastTextLayer();                    
                 int xSpace = tl.getXMax()-tl.getXOffset();
                 int ySpace = tl.getYMax()-tl.getYOffset();
                 tl.setXOffset((int)xa);
@@ -205,6 +205,21 @@ public class Page extends JPanel {
             }
             repaint();
         }
+        
+        if(evt.getButton() == 1 && MainFrame.isStudio()==false){
+            for(TextLayer te : getTextsFrom(actualPage)){
+                if(te.existOnCoordinates(evt.getPoint())){
+                    te.playAudio();
+                }
+            }
+        }else if(evt.getButton() == 3 && MainFrame.isStudio()==false){
+            for(TextLayer te : getTextsFrom(actualPage)){
+                if(te.existOnCoordinates(evt.getPoint())){
+                    te.stopAudio();
+                }
+            }
+        }
+        
         
     }
     

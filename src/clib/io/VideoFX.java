@@ -17,30 +17,29 @@
 package clib.io;
 
 import javafx.embed.swing.JFXPanel;
+import javafx.scene.Group;
+import javafx.scene.Scene;
 import javafx.scene.media.Media;
 import javafx.scene.media.MediaPlayer;
+import javafx.scene.media.MediaView;
 import javax.swing.SwingUtilities;
 
 /**
  *
- * @author Phil
+ * @author Antoine
  */
-public class AudioFX implements Runnable {
-    
-    private String playpath, recordpath;
-    private Thread record, listen;
+public class VideoFX implements Runnable {
+
+    private String playpath;
+    private Thread listen;
     private boolean inListening = false;
     
-    public AudioFX(){
+    public VideoFX() {
         
     }
-    
+
     public void setListenPath(String playpath){
         this.playpath = playpath;
-    }
-    
-    public void setRecordPath(String recordpath){
-        this.recordpath = recordpath;
     }
     
     //""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
@@ -67,6 +66,21 @@ public class AudioFX implements Runnable {
     
     private Media media;
     private MediaPlayer mplayer = null;
+    private JFXPanel fxPanel = null;
+    private Scene scene;
+    
+    public JFXPanel prepareFX(int width, int height){
+        SwingUtilities.invokeLater(() -> {
+            fxPanel = new JFXPanel(); //Force l'utilisation de JavaFX dans Swing
+            media = new Media("file:///"+replaceSlash(playpath));
+            mplayer = new MediaPlayer(media);            
+            scene = new Scene(new Group(), width, height);
+            MediaView mediaView = new MediaView(mplayer);
+            ((Group)scene.getRoot()).getChildren().add(mediaView);
+            fxPanel.setScene(scene);        
+        });
+        return fxPanel;
+    }
     
     private String replaceSlash(String winpath){
         return winpath.replace('\\', '/');
@@ -74,16 +88,15 @@ public class AudioFX implements Runnable {
     
     private void playFX() {
         SwingUtilities.invokeLater(() -> {
-            new JFXPanel(); //Force l'utilisation de JavaFX dans Swing
-            media = new Media("file:///"+replaceSlash(playpath));
-            mplayer = new MediaPlayer(media);
-            mplayer.play();
+            if(mplayer != null){
+                mplayer.play();
+                mplayer = null;
+            }
         });
     }
     
     private void stopFX(){
         SwingUtilities.invokeLater(() -> {
-            new JFXPanel(); //Force l'utilisation de JavaFX dans Swing
             if(mplayer != null){
                 mplayer.stop();
                 mplayer = null;
@@ -106,5 +119,4 @@ public class AudioFX implements Runnable {
             inListening = false;
         }
     }
-    
 }

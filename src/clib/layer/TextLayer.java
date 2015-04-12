@@ -20,17 +20,11 @@ import java.awt.font.TextAttribute;
 import java.awt.font.TextLayout;
 import java.awt.geom.AffineTransform;
 import java.awt.geom.Rectangle2D;
-import java.io.IOException;
 import java.text.AttributedCharacterIterator;
 import java.text.AttributedString;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
-import java.util.logging.Level;
-import java.util.logging.Logger;
-import javax.sound.sampled.LineUnavailableException;
-import javax.sound.sampled.UnsupportedAudioFileException;
-import javax.swing.SwingUtilities;
 
 /**
  *
@@ -41,24 +35,16 @@ public class TextLayer {
     //private String text = "Essai est un essai avec pour objectif d'essayer à faire un essai.";
     private final FromLimitPoint flp = new FromLimitPoint();
     private final ToLimitPoint tlp = new ToLimitPoint();
-    private Color color = Color.black;
-    private Font font = new Font("Serif", Font.PLAIN, 12);
     private boolean showBuilding = false;
     private ISO_3166 country = ISO_3166.United_States_of_America;
     private Map<ISO_3166,String> text = new HashMap<>();
-    private Map<ISO_3166,AudioLayer> audio = new HashMap();
+    private Map<ISO_3166,FontLayer> display = new HashMap<>();
+    private Map<ISO_3166,AudioLayer> audio = new HashMap<>();
+    AudioFX afx = new AudioFX();
     
     public TextLayer(){
         
     }
-    
-//    public void setText(String text){
-//        this.text = text;
-//    }
-//    
-//    public String getText(){
-//        return text;
-//    }
     
     public void setText(ISO_3166 country, String s){
         text.put(country, s);
@@ -76,24 +62,20 @@ public class TextLayer {
         }
     }
     
-    public Set<ISO_3166> getTextCountries(){
-        return text.keySet();
+    public void setDisplay(ISO_3166 country, FontLayer fl){
+        display.put(country, fl);
     }
     
-    public void setCountry(ISO_3166 country){
-        this.country = country;
+    public void removeDisplay(ISO_3166 country){
+        display.remove(country);
     }
     
-    public ISO_3166 getCountry(){
-        return country;
-    }
-    
-    public void setTexts(Map<ISO_3166,String> text){
-        this.text = text;
-    }
-    
-    public Map<ISO_3166,String> getTexts(){
-        return text;
+    public FontLayer getDisplay(ISO_3166 country){
+        if(getDisplayCountries().contains(country)){
+            return display.get(country);
+        }else{
+            return new FontLayer();
+        }
     }
     
     public void setAudio(ISO_3166 country, AudioLayer al){
@@ -108,26 +90,61 @@ public class TextLayer {
         if(getAudioCountries().contains(country)){
             return audio.get(country);
         }else{
-            return null;
+            return new AudioLayer();
         }
+    }
+    
+    public Set<ISO_3166> getTextCountries(){
+        return text.keySet();
+    }
+    
+    public Set<ISO_3166> getDisplayCountries(){
+        return display.keySet();
     }
     
     public Set<ISO_3166> getAudioCountries(){
         return audio.keySet();
     }
     
+    public void setCountry(ISO_3166 country){
+        this.country = country;
+    }
+    
+    public ISO_3166 getCountry(){
+        return country;
+    }
+    
+    public void setTexts(Map<ISO_3166,String> text){
+        this.text = text;
+    }
+    
+    public void setDisplays(Map<ISO_3166,FontLayer> display){
+        this.display = display;
+    }
+    
     public void setAudios(Map<ISO_3166,AudioLayer> audio){
         this.audio = audio;
+    }
+    
+    public Map<ISO_3166,String> getTexts(){
+        return text;
+    }
+    
+    public Map<ISO_3166,FontLayer> getDisplays(){
+        return display;
     }
     
     public Map<ISO_3166,AudioLayer> getAudios(){
         return audio;
     }
     
-    public void playAudio(AudioLayer al){
-        AudioFX afx = new AudioFX();
-        afx.setListenPath(al.getMP3Path());
+    public void playAudio(){
+        afx.setListenPath(getAudio(country).getAACPath());
         afx.listenStart();
+    }
+    
+    public void stopAudio(){
+        afx.listenStop();
     }
     
     public void setXOffset(int x){
@@ -172,8 +189,8 @@ public class TextLayer {
         int paragraphStart, paragraphEnd;
         //AttributedString as = new AttributedString(text.get(country));
         AttributedString as = new AttributedString(getText(country));
-        as.addAttribute(TextAttribute.FONT, font);
-        as.addAttribute(TextAttribute.FOREGROUND, color);
+        as.addAttribute(TextAttribute.FONT, getDisplay(country).getFont());
+        as.addAttribute(TextAttribute.FOREGROUND, getDisplay(country).getColor());
         as.addAttribute(TextAttribute.KERNING, TextAttribute.KERNING_ON);
         as.addAttribute(TextAttribute.LIGATURES, TextAttribute.LIGATURES_ON);
         as.addAttribute(TextAttribute.TRANSFORM, at);
@@ -226,31 +243,43 @@ public class TextLayer {
         g.setStroke(stroke);
     }
     
+    public void drawPlayLogo(Graphics2D g){
+        g.setColor(Color.green);
+        int[] xPoints = {
+            flp.getX()+5,
+            flp.getX()+15,
+            flp.getX()+5
+        };
+        int[] yPoints = {
+            flp.getY()-20,
+            flp.getY()-15,
+            flp.getY()-10
+        };
+        int nPoints = 3;
+        if(getAudio(country).getAACPath().isEmpty()==false){
+            g.fillPolygon(xPoints, yPoints, nPoints);
+        }        
+    }
+    
     public void draw(Graphics2D g){        
         drawText(g);
+        drawPlayLogo(g);
         if(showBuilding == true){
             drawRaw(g);
         }
     }
     
-    public void setTextColor(Color color){
-        this.color = color;
-    }
-    
-    public Color getTextColor(){
-        return color;
-    }
-    
-    public void setTextFont(Font font){
-        this.font = font;
-    }
-    
-    public Font getTextFont(){
-        return font;
-    }
-    
     public void showBuilding(boolean showBuilding){
         this.showBuilding = showBuilding;
+    }
+    
+    public boolean existOnCoordinates(java.awt.Point p){
+        if(getAudio(country).getAACPath().isEmpty()){
+            return false;
+        }
+        java.awt.Rectangle area = new java.awt.Rectangle(flp.getX(), flp.getY(), tlp.getX()-flp.getX(), tlp.getY()-flp.getY());
+        java.awt.Rectangle playicon = new java.awt.Rectangle(flp.getX()+5, flp.getY()-20, 10, 10);
+        return area.contains(p) | playicon.contains(p);
     }
     
     // <editor-fold defaultstate="collapsed" desc=" ISO 3166 ">
@@ -590,7 +619,8 @@ public class TextLayer {
     //========== EXPORT
     //==========================================================================
     
-    public String getStringFontStyle(){
+    public String getStringFontStyle(ISO_3166 country){
+        Font font = getDisplay(country).getFont();
         if(font.isBold() && font.isItalic()){
             return "BoldItalic";
         }else if(font.isBold()){
@@ -600,6 +630,31 @@ public class TextLayer {
         }else{
             return "Plain";
         }
+    }
+    
+    public String getStringColor(ISO_3166 country){
+        Color color = getDisplay(country).getColor();
+        int r = color.getRed();
+        int g = color.getGreen();
+        int b = color.getBlue();
+        String red = Integer.toHexString(r).length()<2 ? "0"+Integer.toHexString(r) : Integer.toHexString(r);
+        String green = Integer.toHexString(g).length()<2 ? "0"+Integer.toHexString(g) : Integer.toHexString(g);
+        String blue = Integer.toHexString(b).length()<2 ? "0"+Integer.toHexString(b) : Integer.toHexString(b);
+        return red+green+blue;
+    }
+    
+    //==========================================================================
+    //========== IMPORT
+    //==========================================================================
+    
+    public Color getColorFromString(String s){
+        String red = s.substring(0, 2);
+        String green = s.substring(2, 4);
+        String blue = s.substring(4);
+        int r = Integer.parseInt(red, 16);
+        int g = Integer.parseInt(green, 16);
+        int b = Integer.parseInt(blue, 16);        
+        return new Color(r, g, b);
     }
     
 }

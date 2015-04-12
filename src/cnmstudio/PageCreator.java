@@ -8,10 +8,11 @@ package cnmstudio;
 
 import clib.dialog.InputDialog;
 import clib.dialog.ShapeLayerDialog;
-import clib.dialog.TextLayerDialog;
+import clib.dialog.TextLayerWithAudioDialog;
 import clib.filter.CNMFilter;
 import clib.filter.ImageFilter;
 import clib.io.DualLock;
+import clib.layer.FontLayer;
 import clib.layer.ImageLayer;
 import clib.layer.PageLayer;
 import clib.layer.ShapeLayer;
@@ -26,8 +27,11 @@ import java.awt.Frame;
 import java.awt.Graphics2D;
 import java.awt.GraphicsEnvironment;
 import java.awt.image.BufferedImage;
+import java.io.File;
 import java.io.IOException;
 import java.util.Set;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import javax.swing.DefaultComboBoxModel;
 import javax.swing.ImageIcon;
 import javax.swing.JFileChooser;
@@ -39,8 +43,7 @@ import javax.swing.filechooser.FileFilter;
 import javax.swing.plaf.nimbus.NimbusLookAndFeel;
 import javax.swing.tree.DefaultMutableTreeNode;
 import javax.swing.tree.DefaultTreeModel;
-import javax.xml.parsers.ParserConfigurationException;
-import org.xml.sax.SAXException;
+import javax.xml.transform.TransformerException;
 
 /**
  *
@@ -601,7 +604,8 @@ public class PageCreator extends javax.swing.JPanel {
             InputDialog id = new InputDialog(parent, true);
             id.setDialogTitle("Text");
             id.setDialogMessage("Please type the text to add onto the image :");
-            tl.setText(TextLayer.ISO_3166.United_States_of_America, id.showDialog("My text here."));        
+            tl.setText(TextLayer.ISO_3166.United_States_of_America, id.showDialog("My text here."));
+            tl.setDisplay(TextLayer.ISO_3166.United_States_of_America, new FontLayer());
 
             lastPageLayerReference.getTexts().add(tl);
 //            listModel.addElement(tl);
@@ -621,25 +625,25 @@ public class PageCreator extends javax.swing.JPanel {
 
     private void cbFontActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_cbFontActionPerformed
         if(lastSelectedTextLayer != null){
-            Font oldFont = lastSelectedTextLayer.getTextFont();
-            lastSelectedTextLayer.setTextFont(new Font((String)cbFont.getSelectedItem(), oldFont.getStyle(), oldFont.getSize()));
-            page.repaint();
+//            Font oldFont = lastSelectedTextLayer.getTextFont();
+//            lastSelectedTextLayer.setTextFont(new Font((String)cbFont.getSelectedItem(), oldFont.getStyle(), oldFont.getSize()));
+//            page.repaint();
         }
     }//GEN-LAST:event_cbFontActionPerformed
 
     private void cbFontStyleActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_cbFontStyleActionPerformed
         if(lastSelectedTextLayer != null){
-            Font oldFont = lastSelectedTextLayer.getTextFont();
-            lastSelectedTextLayer.setTextFont(new Font(oldFont.getFamily(), ((FontStyle)cbFontStyle.getSelectedItem()).getStyle(), oldFont.getSize()));
-            page.repaint();
+//            Font oldFont = lastSelectedTextLayer.getTextFont();
+//            lastSelectedTextLayer.setTextFont(new Font(oldFont.getFamily(), ((FontStyle)cbFontStyle.getSelectedItem()).getStyle(), oldFont.getSize()));
+//            page.repaint();
         }
     }//GEN-LAST:event_cbFontStyleActionPerformed
 
     private void spinFontSizeStateChanged(javax.swing.event.ChangeEvent evt) {//GEN-FIRST:event_spinFontSizeStateChanged
         if(lastSelectedTextLayer != null){
-            Font oldFont = lastSelectedTextLayer.getTextFont();
-            lastSelectedTextLayer.setTextFont(new Font(oldFont.getFamily(), oldFont.getStyle(), (int)spinFontSize.getValue()));
-            page.repaint();
+//            Font oldFont = lastSelectedTextLayer.getTextFont();
+//            lastSelectedTextLayer.setTextFont(new Font(oldFont.getFamily(), oldFont.getStyle(), (int)spinFontSize.getValue()));
+//            page.repaint();
         }
     }//GEN-LAST:event_spinFontSizeStateChanged
 
@@ -715,15 +719,13 @@ public class PageCreator extends javax.swing.JPanel {
                 }                
             }
             if(lastSelectedTextLayer != null){
-                TextLayerDialog tld = new TextLayerDialog(parent, true);
-                tld.setTexts(lastSelectedTextLayer.getTexts());
-                tld.setTextColor(lastSelectedTextLayer.getTextColor());
-                tld.setTextFont(lastSelectedTextLayer.getTextFont());
+                TextLayerWithAudioDialog tld = new TextLayerWithAudioDialog(parent, true);
+                tld.setUP(lastSelectedTextLayer.getTexts(), lastSelectedTextLayer.getDisplays(), lastSelectedTextLayer.getAudios());
                 boolean b = tld.showDialog();
                 if(b == true){
                     lastSelectedTextLayer.setTexts(tld.getTexts());
-                    lastSelectedTextLayer.setTextColor(tld.getTextColor());
-                    lastSelectedTextLayer.setTextFont(tld.getTextFont());
+                    lastSelectedTextLayer.setDisplays(tld.getDisplays());
+                    lastSelectedTextLayer.setAudios(tld.getAudios());
                     searchForLanguage();
                     page.repaint();                    
                 }
@@ -764,8 +766,6 @@ public class PageCreator extends javax.swing.JPanel {
         int z = fcXML.showSaveDialog(this);
         if (z == JFileChooser.APPROVE_OPTION){
             Writer writer = new Writer();
-            DualLock duallock = new DualLock();
-            writer.setDualLock(duallock);
             writer.setPages(page);
             
             String path = fcXML.getSelectedFile().getAbsolutePath();
@@ -773,7 +773,12 @@ public class PageCreator extends javax.swing.JPanel {
                 path = path + ".cnm";
             }
 
-            writer.createXML(path);
+            //writer.createXML(path);
+            try{
+                writer.createCNM(path);
+            }catch (TransformerException | IOException ex){
+                
+            }            
         }
     }//GEN-LAST:event_btnSaveActionPerformed
 
@@ -786,17 +791,33 @@ public class PageCreator extends javax.swing.JPanel {
         fcXML.setFileFilter(new CNMFilter());
         int z = fcXML.showOpenDialog(this);
         if (z == JFileChooser.APPROVE_OPTION){
-            try {
-                Reader reader = new Reader(fcXML.getSelectedFile().getAbsolutePath());
-                page = reader.getPage();
+            try{
+                Reader r = new Reader();
+                File f = new File(System.getProperty("user.home") + File.separator + ".cnmFiles");
+                if(f.exists()==false){
+                    f.mkdir();
+                }
+                page = r.readCNM(fcXML.getSelectedFile().getAbsolutePath(), System.getProperty("user.home") + File.separator + ".cnmFiles" + File.separator);
                 page.setActualPage(page.getPages().get(0));
                 updateImage(page.getPages().get(0));
                 page.repaint();
                 updateTree();
                 searchForLanguage();
-            } catch (ParserConfigurationException | SAXException | IOException ex) {
-                
-            }            
+            } catch (Exception ex) {
+                Logger.getLogger(PageCreator.class.getName()).log(Level.SEVERE, null, ex);
+            }
+//            try {
+//                Reader reader = new Reader(fcXML.getSelectedFile().getAbsolutePath());
+//                page = reader.getPage();
+//                page.setActualPage(page.getPages().get(0));
+//                updateImage(page.getPages().get(0));
+//                page.repaint();
+//                updateTree();
+//                searchForLanguage();
+//            } catch (ParserConfigurationException | SAXException | IOException ex) {
+//
+//            }   
+            
         }
     }//GEN-LAST:event_btnOpenActionPerformed
 
